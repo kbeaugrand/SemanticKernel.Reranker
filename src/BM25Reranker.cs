@@ -7,28 +7,44 @@ using Version = Mosaik.Core.Version;
 
 namespace SemanticKernel.Reranker.BM25
 {
+    /// <summary>
+    /// BM25Reranker implements the IReranker interface using the BM25 algorithm.
+    /// Tokenization and initialization are now handled in a dedicated async method (InitializeAsync),
+    /// rather than in the constructor. This improves maintainability and async handling in client code.
+    /// </summary>
     public class BM25Reranker : IReranker
     {
-        private readonly List<List<string>> _documents;
-        private readonly Dictionary<string, int> _df;
-        private readonly List<int> _docLens;
-        private readonly double _avgDocLen;
-        private readonly int _N;
+        private List<List<string>> _documents = new();
+        private Dictionary<string, int> _df = new();
+        private List<int> _docLens = new();
+        private double _avgDocLen;
+        private int _N;
         private readonly double _k1;
         private readonly double _b;
+        private IEnumerable<string> _rawDocuments;
+        private bool _initialized = false;
 
+        /// <summary>
+        /// Constructs a BM25Reranker. Tokenization and initialization must be performed by calling InitializeAsync after construction.
+        /// </summary>
+        /// <param name="documents">The raw documents to rank.</param>
+        /// <param name="k1">BM25 k1 parameter.</param>
+        /// <param name="b">BM25 b parameter.</param>
         public BM25Reranker(IEnumerable<string> documents, double k1 = 1.5, double b = 0.75)
         {
             _k1 = k1;
             _b = b;
-            _df = new Dictionary<string, int>();
+            _rawDocuments = documents;
+        }
 
-            // Tokenize documents asynchronously and wait for completion
-            var tokenizedDocs = Task.WhenAll(documents.Select(TokenizeAsync)).GetAwaiter().GetResult();
+        private async Task InitializeAsync()
+        {
+            _df = new Dictionary<string, int>();
+            var tokenizedDocs = await Task.WhenAll(_rawDocuments.Select(TokenizeAsync));
             _documents = tokenizedDocs.ToList();
             _docLens = _documents.Select(d => d.Count).ToList();
             _N = _documents.Count;
-            _avgDocLen = _docLens.Average();
+            _avgDocLen = _docLens.Count > 0 ? _docLens.Average() : 0;
 
             foreach (var doc in _documents)
             {
@@ -40,10 +56,21 @@ namespace SemanticKernel.Reranker.BM25
                         _df[word] = 1;
                 }
             }
+            _initialized = true;
         }
 
+        /// <summary>
+        /// Ranks the documents for the given query using BM25. Requires initialization via InitializeAsync.
+        /// </summary>
+        /// <param name="query">The query to rank against.</param>
+        /// <param name="topN">Number of top results to return.</param>
+        /// <returns>List of (document index, score) tuples.</returns>
+        /// <exception cref="InvalidOperationException">Thrown if not initialized.</exception>
         public async Task<List<(int, double)>> RankAsync(string query, int topN = 5)
         {
+            if (!_initialized)
+                await InitializeAsync();
+
             var queryTokens = await TokenizeAsync(query);
             var scores = new List<(int, double)>();
 

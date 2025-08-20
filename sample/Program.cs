@@ -18,10 +18,10 @@ namespace BM25Sample
             // Use default k1 and b
             var bm25 = new BM25Reranker(docs);
 
-            var results = await bm25.RankAsync("quick brown fox", topN: 3);
+            IEnumerable<(int Index, double Score)> ranked = await bm25.RankAsync("quick brown fox", topN: 3);
 
-            foreach (var result in results)
-                Console.WriteLine($"Doc #{result.Item1}: Score = {result.Item2}");
+            foreach (var result in ranked)
+                Console.WriteLine($"Doc #{result.Index}: Score = {result.Score}");
         }
     }
 }

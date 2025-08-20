@@ -64,6 +64,9 @@ Traditional BM25 relies on exact token overlap between query and document. Howev
 
 1. Install the package via NuGet Package Manager or via the .NET CLI:
 
+```dotnetcli
+dotnet add package SemanticKernel.Reranker.BM25
+```
 
 ## Usage Example
 

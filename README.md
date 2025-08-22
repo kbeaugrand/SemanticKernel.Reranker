@@ -1,5 +1,7 @@
 [![Build & Test](https://github.com/kbeaugrand/SemanticKernel.Reranker/actions/workflows/build_tests.yml/badge.svg)](https://github.com/kbeaugrand/SemanticKernel.Reranker/actions/workflows/build_tests.yml)
 [![Create Release](https://github.com/kbeaugrand/SemanticKernel.Reranker/actions/workflows/publish.yml/badge.svg)](https://github.com/kbeaugrand/SemanticKernel.Reranker/actions/workflows/publish.yml)
+[![Version](https://img.shields.io/github/v/release/kbeaugrand/SemanticKernel.Reranker)](https://img.shields.io/github/v/release/kbeaugrand/SemanticKernel.Reranker)
+[![License](https://img.shields.io/github/license/kbeaugrand/SemanticKernel.Reranker)](https://img.shields.io/github/v/release/kbeaugrand/SemanticKernel.Reranker)
 
 # BM25 Reranker
 

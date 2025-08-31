@@ -40,14 +40,17 @@ namespace SemanticKernel.Reranker.BM25
         private static readonly HashSet<Language> _registeredLanguages = new();
 
         private readonly CorpusStatistics? _corpusStats;
+        private readonly HashSet<Language>? _supportedLanguages;
 
         /// <summary>
-        /// Initializes a new instance of BM25Reranker with optional pre-computed corpus statistics.
+        /// Initializes a new instance of BM25Reranker with optional pre-computed corpus statistics and supported languages.
         /// </summary>
         /// <param name="corpusStats">Pre-computed corpus statistics for better performance</param>
-        public BM25Reranker(CorpusStatistics? corpusStats = null)
+        /// <param name="supportedLanguages">Optional set of supported languages. If null, all languages are supported.</param>
+        public BM25Reranker(CorpusStatistics? corpusStats = null, HashSet<Language>? supportedLanguages = null)
         {
             _corpusStats = corpusStats;
+            _supportedLanguages = supportedLanguages;
         }
         /// <summary>
         /// Scores documents using the BM25 algorithm against a given query.
@@ -195,7 +198,7 @@ namespace SemanticKernel.Reranker.BM25
         /// </summary>
         /// <param name="documents">The corpus of documents to analyze</param>
         /// <returns>Corpus statistics that can be used to initialize BM25Reranker</returns>
-        public static async Task<CorpusStatistics> ComputeCorpusStatisticsAsync(IAsyncEnumerable<string> documents)
+        public async Task<CorpusStatistics> ComputeCorpusStatisticsAsync(IAsyncEnumerable<string> documents)
         {
             var df = new Dictionary<string, int>();
             int totalDocuments = 0;
@@ -246,14 +249,14 @@ namespace SemanticKernel.Reranker.BM25
         /// <summary>
         /// Static version for corpus statistics computation.
         /// </summary>
-        private static async Task<(List<string> tokens, Dictionary<string, int> termFreqs)> GetOrCacheTokensStaticAsync(string cacheKey, string text)
+        private async Task<(List<string> tokens, Dictionary<string, int> termFreqs)> GetOrCacheTokensStaticAsync(string cacheKey, string text)
         {
             if (_tokenCache.TryGetValue(cacheKey, out var cached))
             {
                 return cached;
             }
             
-            var tokens = await TokenizeAsync(text);
+            var tokens = await TokenizeStaticAsync(text);
             var termFreqs = tokens.GroupBy(t => t).ToDictionary(g => g.Key, g => g.Count());
             
             var result = (tokens, termFreqs);
@@ -300,7 +303,7 @@ namespace SemanticKernel.Reranker.BM25
         /// <summary>
         /// Optimized tokenization with caching and reduced reflection overhead.
         /// </summary>
-        private static async Task<List<string>> TokenizeAsync(string text)
+        private async Task<List<string>> TokenizeAsync(string text)
         {
             var doc = new Document(text);
             var cld2LanguageDetector = await LanguageDetector.FromStoreAsync(Language.Any, Version.Latest, "");
@@ -321,13 +324,93 @@ namespace SemanticKernel.Reranker.BM25
         }
 
         /// <summary>
-        /// Gets or creates a cached NLP pipeline for the specified language.
+        /// Static version of tokenization for corpus statistics computation.
         /// </summary>
-        private static async Task<Pipeline> GetOrCreatePipelineAsync(Language language)
+        private async Task<List<string>> TokenizeStaticAsync(string text)
+        {
+            var doc = new Document(text);
+            var cld2LanguageDetector = await LanguageDetector.FromStoreAsync(Language.Any, Version.Latest, "");
+
+            cld2LanguageDetector.Process(doc);
+
+            if (doc.Language == Language.Unknown)
+            {
+                doc.Language = Language.English; // Default to English if detection fails
+            }
+
+            var pipeline = await GetOrCreatePipelineStaticAsync(doc.Language);
+            
+            var tokens = pipeline.ProcessSingle(doc).Spans
+                .SelectMany(c => c.Tokens)
+                .Where(token => !Catalyst.StopWords.Spacy.For(doc.Language).Contains(token.Lemma))
+                .Where(token => token.POS != PartOfSpeech.PUNCT && token.POS != PartOfSpeech.SYM)
+                .Select(token => token.Lemma)
+                .ToList();
+
+            return tokens;
+        }
+
+        /// <summary>
+        /// Static version of pipeline creation for corpus statistics computation.
+        /// </summary>
+        private async Task<Pipeline> GetOrCreatePipelineStaticAsync(Language language)
         {
             if (_pipelineCache.TryGetValue(language, out var cached))
             {
                 return cached;
+            }
+
+            // Ensure language model is registered (with thread safety) - no language filtering for static version
+            if (!_registeredLanguages.Contains(language))
+            {
+                lock (_modelLock)
+                {
+                    if (!_registeredLanguages.Contains(language))
+                    {
+                        try
+                        {
+                            RegisterLanguageModel(language); // No filtering for static version
+                            _registeredLanguages.Add(language);
+                        }
+                        catch (Exception)
+                        {
+                            // Fall back to English if language model is not available
+                            language = Language.English;
+                            if (!_registeredLanguages.Contains(language))
+                            {
+                                RegisterLanguageModel(language);
+                                _registeredLanguages.Add(language);
+                            }
+                        }
+                    }
+                }
+            }
+
+            var pipeline = await Pipeline.ForAsync(language);
+            _pipelineCache.TryAdd(language, pipeline);
+            return pipeline;
+        }
+
+        /// <summary>
+        /// Gets or creates a cached NLP pipeline for the specified language.
+        /// </summary>
+        private async Task<Pipeline> GetOrCreatePipelineAsync(Language language)
+        {
+            if (_pipelineCache.TryGetValue(language, out var cached))
+            {
+                return cached;
+            }
+
+            // Check if language is supported before attempting registration
+            var originalLanguage = language;
+            if (_supportedLanguages != null && !_supportedLanguages.Contains(language))
+            {
+                // Fall back to English if language is not supported
+                language = Language.English;
+                if (_pipelineCache.TryGetValue(language, out var fallbackCached))
+                {
+                    return fallbackCached;
+                }
             }
 
             // Ensure language model is registered (with thread safety)
@@ -337,8 +420,21 @@ namespace SemanticKernel.Reranker.BM25
                 {
                     if (!_registeredLanguages.Contains(language))
                     {
-                        RegisterLanguageModel(language);
-                        _registeredLanguages.Add(language);
+                        var registrationSuccess = RegisterLanguageModel(language);
+                        if (!registrationSuccess && language != Language.English)
+                        {
+                            // Fall back to English if registration failed
+                            language = Language.English;
+                            if (!_registeredLanguages.Contains(language))
+                            {
+                                RegisterLanguageModel(language);
+                                _registeredLanguages.Add(language);
+                            }
+                        }
+                        else
+                        {
+                            _registeredLanguages.Add(language);
+                        }
                     }
                 }
             }
@@ -351,8 +447,14 @@ namespace SemanticKernel.Reranker.BM25
         /// <summary>
         /// Language model registration.
         /// </summary>
-        private static void RegisterLanguageModel(Language language)
+        private bool RegisterLanguageModel(Language language)
         {
+            // Skip registration if language is not in supported languages
+            if (_supportedLanguages != null && !_supportedLanguages.Contains(language))
+            {
+                return false;
+            }
+
             try
             {
                 // Cache assembly loading
@@ -371,9 +473,11 @@ namespace SemanticKernel.Reranker.BM25
             }
             catch (Exception)
             {
-                // Log error in production code
-                throw;
+                // Silently ignore unsupported language models
+                // The caller will handle fallbacks if needed
             }
+
+            return true;
         }
 
         /// <summary>

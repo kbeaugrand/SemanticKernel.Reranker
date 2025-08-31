@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Mosaik.Core;
 using SemanticKernel.Reranker.BM25;
 using Xunit;
 
@@ -10,7 +11,7 @@ public class BM25RerankerBasicTests
 
     public BM25RerankerBasicTests()
     {
-        _reranker = new BM25Reranker();
+        _reranker = new BM25Reranker(supportedLanguages: [Language.English]);
     }
 
     [Fact]

@@ -138,8 +138,11 @@ namespace SemanticKernel.Reranker.BM25
             var getText = textProperty.Compile();
             await foreach (var result in searchResults)
             {
-                var text = getText(result.Record);
-                yield return text;
+                if (result.Record != null)
+                {
+                    var text = getText(result.Record);
+                    yield return text;
+                }
             }
         }
 

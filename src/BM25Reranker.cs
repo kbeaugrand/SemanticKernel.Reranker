@@ -65,7 +65,7 @@ namespace SemanticKernel.Reranker.BM25
         /// <param name="b">Controls document length normalization. Range: 0-1. Default is 0.75</param>
         /// <param name="k3">Controls query term frequency impact. Default is 1000</param>
         /// <returns>An async enumerable of tuples containing the document and its BM25 score</returns>
-        public async IAsyncEnumerable<(string, double)> ScoreAsync(string query, IAsyncEnumerable<string> documents, double k1 = 1.5, double b = 0.75, double k3 = 1000)
+        public async IAsyncEnumerable<(string DocumentText, double Score)> ScoreAsync(string query, IAsyncEnumerable<string> documents, double k1 = 1.5, double b = 0.75, double k3 = 1000)
         {
             // Cache query tokenization
             var cacheKey = $"query_{query.GetHashCode()}";
@@ -96,49 +96,56 @@ namespace SemanticKernel.Reranker.BM25
         }
 
         /// <summary>
-        /// Scores vector search results using the BM25 algorithm against a given query.
-        /// This overload is specifically designed to work with VectorSearchResult objects by extracting text content
-        /// from the search results using a provided property expression and then applying BM25 scoring.
-        /// Returns an async enumerable of document-score pairs in the order they were processed.
+        /// Scores a set of search results using the BM25 algorithm.
+        /// </summary>
+        /// <summary>
+        /// Scores a set of search results using the BM25 algorithm.
+        /// This overload extracts text content from VectorSearchResult objects using a property expression.
         /// </summary>
         /// <typeparam name="T">The type of records contained in the VectorSearchResult objects</typeparam>
         /// <param name="query">The search query to score documents against</param>
-        /// <param name="searchResults">An async enumerable of VectorSearchResult objects containing the records to score</param>
-        /// <param name="textProperty">An expression that specifies which property of type T contains the text content to be scored</param>
+        /// <param name="searchResults">An async enumerable of VectorSearchResult objects to score</param>
+        /// <param name="textProperty">An expression that specifies which property of type T contains the text content</param>
         /// <param name="k1">Controls term frequency impact. Typical values: 1.2-2.0. Default is 1.5</param>
         /// <param name="b">Controls document length normalization. Range: 0-1. Default is 0.75</param>
         /// <param name="k3">Controls query term frequency impact. Default is 1000</param>
-        /// <returns>An async enumerable of tuples containing the extracted text document and its BM25 score</returns>
-        /// <remarks>
-        /// This method serves as a convenient wrapper around the core ScoreAsync method for VectorSearchResult objects.
-        /// It extracts text content from each search result using the provided property expression and then
-        /// applies BM25 scoring to determine relevance scores. The method maintains the same performance
-        /// characteristics as the core scoring implementation, including support for both streaming with
-        /// pre-computed corpus statistics and fallback to two-pass approach when statistics are not available.
-        /// 
-        /// Example usage:
-        /// <code>
-        /// var reranker = new BM25Reranker();
-        /// await foreach (var (text, score) in reranker.ScoreAsync("search query", vectorResults, x => x.Content))
-        /// {
-        ///     Console.WriteLine($"Score: {score}, Text: {text}");
-        /// }
-        /// </code>
-        /// </remarks>
-        public async IAsyncEnumerable<(string, double)> ScoreAsync<T>(string query, IAsyncEnumerable<VectorSearchResult<T>> searchResults, Expression<Func<T, string>> textProperty, double k1 = 1.5, double b = 0.75, double k3 = 1000)
+        /// <returns>An async enumerable of tuples containing the VectorSearchResult and its BM25 score</returns>
+        public async IAsyncEnumerable<(VectorSearchResult<T>, double)> ScoreAsync<T>(string query, IAsyncEnumerable<VectorSearchResult<T>> searchResults, Expression<Func<T, string>> textProperty, double k1 = 1.5, double b = 0.75, double k3 = 1000)
         {
-            await foreach (var result in ScoreAsync(query, GetTextFromSearchResults(searchResults, textProperty), k1, b, k3))
+            var searchResultsList = new List<VectorSearchResult<T>>();
+            var documentTexts = new List<string>();
+            var getText = textProperty.Compile();
+
+            await foreach (var searchResult in searchResults)
             {
-                yield return result;
+                searchResultsList.Add(searchResult);
+                var text = getText(searchResult.Record);
+                documentTexts.Add(text);
+            }
+
+            var index = 0;
+            await foreach (var result in ScoreAsync(query, ToAsyncEnumerable(documentTexts), k1, b, k3))
+            {
+                yield return (searchResultsList[index], result.Score);
+                index++;
+            }
+        }
+
+        private static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(IEnumerable<T> source)
+        {
+            foreach (var item in source)
+            {
+                yield return item;
             }
         }
 
         private async IAsyncEnumerable<string> GetTextFromSearchResults<T>(IAsyncEnumerable<VectorSearchResult<T>> searchResults, Expression<Func<T, string>> textProperty)
         {
+            var getText = textProperty.Compile();
             await foreach (var result in searchResults)
             {
-                var text = textProperty.Compile()(result.Record);
-               yield return text;
+                var text = getText(result.Record);
+                yield return text;
             }
         }
 
@@ -263,11 +270,37 @@ namespace SemanticKernel.Reranker.BM25
         /// characteristics as the core ranking implementation, including efficient top-N selection using
         /// a priority queue for memory optimization.
         /// </remarks>
-        public async IAsyncEnumerable<(string document, double score)> RankAsync<T>(string query, IAsyncEnumerable<VectorSearchResult<T>> documents, Expression<Func<T, string>> textProperty, int topN = 5, double k1 = 1.5, double b = 0.75, double k3 = 1000)
+        public async IAsyncEnumerable<(VectorSearchResult<T>, double)> RankAsync<T>(string query, IAsyncEnumerable<VectorSearchResult<T>> documents, Expression<Func<T, string>> textProperty, int topN = 5, double k1 = 1.5, double b = 0.75, double k3 = 1000)
         {
-            await foreach (var (document, score) in RankAsync(query, GetTextFromSearchResults(documents, textProperty), topN, k1, b, k3))
+            var topResults = new PriorityQueue<(VectorSearchResult<T> document, double score), double>();
+
+            await foreach (var (document, score) in ScoreAsync(query, documents, textProperty, k1, b, k3))
             {
-                yield return (document, score);
+                var floatScore = (float)score;
+
+                if (topResults.Count < topN)
+                {
+                    topResults.Enqueue((document, floatScore), floatScore);
+                }
+                else if (floatScore > topResults.Peek().score)
+                {
+                    topResults.Dequeue();
+                    topResults.Enqueue((document, floatScore), floatScore);
+                }
+            }
+
+             // Extract results and sort in descending order
+            var results = new List<(VectorSearchResult<T> document, double score)>();
+            while (topResults.Count > 0)
+            {
+                results.Add(topResults.Dequeue());
+            }
+            
+            results.Reverse(); // PriorityQueue is min-heap, so reverse for descending order
+            
+            foreach (var result in results)
+            {
+                yield return result;
             }
         }
 

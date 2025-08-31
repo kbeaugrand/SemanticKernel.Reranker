@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
+using System.Linq.Expressions;
 using System.Reflection;
 using Catalyst;
 using Catalyst.Models;
+using Microsoft.Extensions.VectorData;
 using Mosaik.Core;
 using Version = Mosaik.Core.Version;
 
@@ -90,6 +92,53 @@ namespace SemanticKernel.Reranker.BM25
                 {
                     yield return result;
                 }
+            }
+        }
+
+        /// <summary>
+        /// Scores vector search results using the BM25 algorithm against a given query.
+        /// This overload is specifically designed to work with VectorSearchResult objects by extracting text content
+        /// from the search results using a provided property expression and then applying BM25 scoring.
+        /// Returns an async enumerable of document-score pairs in the order they were processed.
+        /// </summary>
+        /// <typeparam name="T">The type of records contained in the VectorSearchResult objects</typeparam>
+        /// <param name="query">The search query to score documents against</param>
+        /// <param name="searchResults">An async enumerable of VectorSearchResult objects containing the records to score</param>
+        /// <param name="textProperty">An expression that specifies which property of type T contains the text content to be scored</param>
+        /// <param name="k1">Controls term frequency impact. Typical values: 1.2-2.0. Default is 1.5</param>
+        /// <param name="b">Controls document length normalization. Range: 0-1. Default is 0.75</param>
+        /// <param name="k3">Controls query term frequency impact. Default is 1000</param>
+        /// <returns>An async enumerable of tuples containing the extracted text document and its BM25 score</returns>
+        /// <remarks>
+        /// This method serves as a convenient wrapper around the core ScoreAsync method for VectorSearchResult objects.
+        /// It extracts text content from each search result using the provided property expression and then
+        /// applies BM25 scoring to determine relevance scores. The method maintains the same performance
+        /// characteristics as the core scoring implementation, including support for both streaming with
+        /// pre-computed corpus statistics and fallback to two-pass approach when statistics are not available.
+        /// 
+        /// Example usage:
+        /// <code>
+        /// var reranker = new BM25Reranker();
+        /// await foreach (var (text, score) in reranker.ScoreAsync("search query", vectorResults, x => x.Content))
+        /// {
+        ///     Console.WriteLine($"Score: {score}, Text: {text}");
+        /// }
+        /// </code>
+        /// </remarks>
+        public async IAsyncEnumerable<(string, double)> ScoreAsync<T>(string query, IAsyncEnumerable<VectorSearchResult<T>> searchResults, Expression<Func<T, string>> textProperty, double k1 = 1.5, double b = 0.75, double k3 = 1000)
+        {
+            await foreach (var result in ScoreAsync(query, GetTextFromSearchResults(searchResults, textProperty), k1, b, k3))
+            {
+                yield return result;
+            }
+        }
+
+        private async IAsyncEnumerable<string> GetTextFromSearchResults<T>(IAsyncEnumerable<VectorSearchResult<T>> searchResults, Expression<Func<T, string>> textProperty)
+        {
+            await foreach (var result in searchResults)
+            {
+                var text = textProperty.Compile()(result.Record);
+               yield return text;
             }
         }
 
@@ -194,6 +243,35 @@ namespace SemanticKernel.Reranker.BM25
         }
 
         /// <summary>
+        /// Ranks vector search results using the BM25 algorithm and returns the top N results sorted by relevance score.
+        /// This overload is specifically designed to work with VectorSearchResult objects by extracting text content
+        /// from the search results using a provided property expression.
+        /// </summary>
+        /// <typeparam name="T">The type of records contained in the VectorSearchResult objects</typeparam>
+        /// <param name="query">The search query to rank documents against</param>
+        /// <param name="documents">An async enumerable of VectorSearchResult objects containing the records to rank</param>
+        /// <param name="textProperty">An expression that specifies which property of type T contains the text content to be ranked</param>
+        /// <param name="topN">The maximum number of top-ranked documents to return. Default is 5</param>
+        /// <param name="k1">Controls term frequency impact. Typical values: 1.2-2.0. Default is 1.5</param>
+        /// <param name="b">Controls document length normalization. Range: 0-1. Default is 0.75</param>
+        /// <param name="k3">Controls query term frequency impact. Default is 1000</param>
+        /// <returns>An async enumerable of tuples containing the top N text documents and their BM25 scores, sorted by relevance</returns>
+        /// <remarks>
+        /// This method serves as a convenient wrapper around the core RankAsync method for VectorSearchResult objects.
+        /// It extracts text content from each search result using the provided property expression and then
+        /// applies BM25 ranking to determine relevance scores. The method maintains the same performance
+        /// characteristics as the core ranking implementation, including efficient top-N selection using
+        /// a priority queue for memory optimization.
+        /// </remarks>
+        public async IAsyncEnumerable<(string document, double score)> RankAsync<T>(string query, IAsyncEnumerable<VectorSearchResult<T>> documents, Expression<Func<T, string>> textProperty, int topN = 5, double k1 = 1.5, double b = 0.75, double k3 = 1000)
+        {
+            await foreach (var (document, score) in RankAsync(query, GetTextFromSearchResults(documents, textProperty), topN, k1, b, k3))
+            {
+                yield return (document, score);
+            }
+        }
+
+        /// <summary>
         /// Pre-computes corpus statistics for efficient streaming BM25 scoring.
         /// </summary>
         /// <param name="documents">The corpus of documents to analyze</param>
@@ -203,15 +281,15 @@ namespace SemanticKernel.Reranker.BM25
             var df = new Dictionary<string, int>();
             int totalDocuments = 0;
             double totalLength = 0;
-            
+
             await foreach (var document in documents)
             {
                 var cacheKey = $"doc_{document.GetHashCode()}";
                 var (docTokens, docTermFreqs) = await GetOrCacheTokensStaticAsync(cacheKey, document);
-                
+
                 totalLength += docTokens.Count;
                 totalDocuments++;
-                
+
                 // Optimized document frequency updates
                 foreach (var term in docTermFreqs.Keys)
                 {
@@ -219,7 +297,7 @@ namespace SemanticKernel.Reranker.BM25
                     df[term] = count + 1;
                 }
             }
-            
+
             return new CorpusStatistics
             {
                 DocumentFrequencies = df,

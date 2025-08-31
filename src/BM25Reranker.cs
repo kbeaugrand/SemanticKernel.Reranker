@@ -135,10 +135,11 @@ namespace SemanticKernel.Reranker.BM25
 
         private async IAsyncEnumerable<string> GetTextFromSearchResults<T>(IAsyncEnumerable<VectorSearchResult<T>> searchResults, Expression<Func<T, string>> textProperty)
         {
+            var getText = textProperty.Compile();
             await foreach (var result in searchResults)
             {
-                var text = textProperty.Compile()(result.Record);
-               yield return text;
+                var text = getText(result.Record);
+                yield return text;
             }
         }
 

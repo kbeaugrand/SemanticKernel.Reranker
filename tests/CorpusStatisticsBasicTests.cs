@@ -1,6 +1,4 @@
 using FluentAssertions;
-using SemanticKernel.Reranker.BM25;
-using Xunit;
 
 namespace SemanticKernel.Reranker.BM25.Tests;
 
@@ -17,8 +15,10 @@ public class CorpusStatisticsBasicTests
             "The lazy cat sleeps all day"
         });
 
+        var ranker = new BM25Reranker();
+
         // Act
-        var stats = await BM25Reranker.ComputeCorpusStatisticsAsync(documents);
+        var stats = await ranker.ComputeCorpusStatisticsAsync(documents);
 
         // Assert
         stats.TotalDocuments.Should().Be(3);

@@ -63,9 +63,11 @@ namespace BM25Sample
             Console.WriteLine(new string('-', 50));
             
             var stopwatch = Stopwatch.StartNew();
-            
+
+            var ranker = new BM25Reranker();
+
             // Pre-compute corpus statistics once
-            var corpusStats = await BM25Reranker.ComputeCorpusStatisticsAsync(docs.ToAsyncEnumerable());
+            var corpusStats = await ranker.ComputeCorpusStatisticsAsync(docs.ToAsyncEnumerable());
             var bm25WithStats = new BM25Reranker(corpusStats);
             
             Console.WriteLine("Scoring documents for query: 'machine learning'");

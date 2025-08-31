@@ -1,4 +1,4 @@
-// English stop words from spacy: https://github.com/explosion/spaCy/blob/master/spacy/lang/de/stop_words.py
+// French stop words from spacy: https://github.com/explosion/spaCy/blob/master/spacy/lang/fr/stop_words.py
 
 namespace SemanticKernel.Reranker.BM25.StopWords
 {

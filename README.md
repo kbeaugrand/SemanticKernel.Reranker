@@ -78,7 +78,7 @@ dotnet add package SemanticKernel.Reranker.BM25
 ```csharp
 using SemanticKernel.Reranker.BM25;
 
-// Sample documents to index
+// Sample documents to rank
 var documents = new List<string>
 {
     "The quick brown fox jumps over the lazy dog.",
@@ -88,18 +88,44 @@ var documents = new List<string>
     "Natural language processing helps computers understand human language."
 };
 
-// Create BM25 reranker with default parameters (k1=1.5, b=0.75)
-var bm25 = new BM25Reranker(documents);
+// Create BM25 reranker
+var bm25 = new BM25Reranker();
 
-// Rank documents for a query
-var results = await bm25.RankAsync("quick brown fox", topN: 3);
-
-// Display results
-foreach (var (documentIndex, score) in results)
+// Method 1: Basic scoring - get all document scores
+Console.WriteLine("=== Basic Scoring ===");
+await foreach (var (document, score) in bm25.ScoreAsync("quick brown fox", documents.ToAsyncEnumerable()))
 {
-    Console.WriteLine($"Document #{documentIndex}: Score = {score:F4}");
-    Console.WriteLine($"Content: {documents[documentIndex]}");
-    Console.WriteLine();
+    Console.WriteLine($"Score: {score:F4} | Document: \"{document}\"");
+}
+
+// Method 2: Top-N ranking - get only the best results
+Console.WriteLine("\n=== Top-N Ranking ===");
+await foreach (var (document, score) in bm25.RankAsync("quick brown fox", documents.ToAsyncEnumerable(), topN: 3))
+{
+    Console.WriteLine($"Score: {score:F4} | Document: \"{document}\"");
+}
+
+// Method 3: Optimized approach with pre-computed corpus statistics
+Console.WriteLine("\n=== Optimized with Corpus Statistics ===");
+var corpusStats = await bm25.ComputeCorpusStatisticsAsync(documents.ToAsyncEnumerable());
+var optimizedBm25 = new BM25Reranker(corpusStats);
+
+await foreach (var (document, score) in optimizedBm25.ScoreAsync("machine learning", documents.ToAsyncEnumerable()))
+{
+    Console.WriteLine($"Score: {score:F4} | Document: \"{document}\"");
+}
+
+// Extension method to convert List to IAsyncEnumerable
+public static class ListExtensions
+{
+    public static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(this IEnumerable<T> source)
+    {
+        foreach (var item in source)
+        {
+            yield return item;
+            await Task.Yield(); // Simulate async behavior
+        }
+    }
 }
 ```
 
@@ -133,11 +159,23 @@ foreach (var (documentIndex, score) in results)
 
 ### BM25 Parameters
 
-You can customize the BM25 algorithm behavior:
+You can customize the BM25 algorithm behavior by passing parameters to the scoring methods:
 
 ```csharp
 // Custom k1 and b parameters
-var bm25 = new BM25Reranker(documents, k1: 2.0, b: 0.5);
+var bm25 = new BM25Reranker();
+
+// Use custom parameters in scoring
+await foreach (var (document, score) in bm25.ScoreAsync("query", documents.ToAsyncEnumerable(), k1: 2.0, b: 0.5))
+{
+    Console.WriteLine($"Score: {score:F4} | Document: \"{document}\"");
+}
+
+// Or in ranking with top-N
+await foreach (var (document, score) in bm25.RankAsync("query", documents.ToAsyncEnumerable(), topN: 5, k1: 2.0, b: 0.5))
+{
+    Console.WriteLine($"Score: {score:F4} | Document: \"{document}\"");
+}
 ```
 
 - **k1 (default: 1.5):** Controls term frequency saturation. Higher values give more weight to repeated terms.
@@ -145,12 +183,57 @@ var bm25 = new BM25Reranker(documents, k1: 2.0, b: 0.5);
 
 ### Language Support
 
-The library automatically detects document language and applies appropriate NLP models. Supported languages include:
+The library automatically detects document language and applies appropriate NLP models. You can also optionally restrict the supported languages:
+
+```csharp
+using Catalyst;
+
+// Create reranker with specific language support
+var supportedLanguages = new HashSet<Language> { Language.English, Language.French, Language.German };
+var bm25 = new BM25Reranker(supportedLanguages: supportedLanguages);
+
+// Or combine with corpus statistics
+var corpusStats = await new BM25Reranker().ComputeCorpusStatisticsAsync(documents.ToAsyncEnumerable());
+var optimizedBm25 = new BM25Reranker(corpusStats, supportedLanguages);
+```
+
+Supported languages include:
 
 - English
 - French  
 - German
 - Additional languages supported by Catalyst
+
+### Performance Optimization
+
+The library includes several performance optimizations:
+
+**Caching:** The reranker automatically caches tokenization results for better performance with repeated queries or documents:
+
+```csharp
+var bm25 = new BM25Reranker();
+
+// First run - cache miss
+await foreach (var result in bm25.ScoreAsync("query", documents.ToAsyncEnumerable())) { }
+
+// Second run - cache hit (much faster)
+await foreach (var result in bm25.ScoreAsync("query", documents.ToAsyncEnumerable())) { }
+
+// Clear cache when needed
+BM25Reranker.ClearCache();
+```
+
+**Corpus Statistics:** For multiple queries on the same document set, pre-compute corpus statistics:
+
+```csharp
+var bm25 = new BM25Reranker();
+var corpusStats = await bm25.ComputeCorpusStatisticsAsync(documents.ToAsyncEnumerable());
+var optimizedBm25 = new BM25Reranker(corpusStats);
+
+// Now all queries will be faster
+await foreach (var result in optimizedBm25.ScoreAsync("query1", documents.ToAsyncEnumerable())) { }
+await foreach (var result in optimizedBm25.ScoreAsync("query2", documents.ToAsyncEnumerable())) { }
+```
 
 ---
 

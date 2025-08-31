@@ -155,11 +155,11 @@ namespace SemanticKernel.Reranker.BM25
         /// <param name="b">Controls document length normalization. Range: 0-1. Default is 0.75</param>
         /// <param name="k3">Controls query term frequency impact. Default is 1000</param>
         /// <returns>An async enumerable of tuples containing the top N documents and their BM25 scores, sorted by relevance</returns>
-        public async IAsyncEnumerable<(string document, float score)> RankAsync(string query, IAsyncEnumerable<string> documents, int topN = 5, double k1 = 1.5, double b = 0.75, double k3 = 1000)
+        public async IAsyncEnumerable<(string document, double score)> RankAsync(string query, IAsyncEnumerable<string> documents, int topN = 5, double k1 = 1.5, double b = 0.75, double k3 = 1000)
         {
             // Use a min-heap to maintain top N results efficiently
-            var topResults = new PriorityQueue<(string document, float score), float>();
-            
+            var topResults = new PriorityQueue<(string document, double score), double>();
+
             await foreach (var (document, score) in ScoreAsync(query, documents, k1, b, k3))
             {
                 var floatScore = (float)score;
@@ -176,7 +176,7 @@ namespace SemanticKernel.Reranker.BM25
             }
             
             // Extract results and sort in descending order
-            var results = new List<(string document, float score)>();
+            var results = new List<(string document, double score)>();
             while (topResults.Count > 0)
             {
                 results.Add(topResults.Dequeue());

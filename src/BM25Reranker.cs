@@ -1,102 +1,305 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using Catalyst;
 using Catalyst.Models;
-using Microsoft.ML;
 using Mosaik.Core;
 using Version = Mosaik.Core.Version;
 
 namespace SemanticKernel.Reranker.BM25
 {
     /// <summary>
-    /// BM25Reranker implements the IReranker interface using the BM25 algorithm.
-    /// Tokenization and initialization are now handled in a dedicated async method (InitializeAsync),
-    /// rather than in the constructor. This improves maintainability and async handling in client code.
+    /// Contains pre-computed corpus statistics for efficient BM25 scoring.
     /// </summary>
-    public class BM25Reranker : IReranker
+    public class CorpusStatistics
     {
-        private List<List<string>> _documents = new();
-        private Dictionary<string, int> _df = new();
-        private List<int> _docLens = new();
-        private double _avgDocLen;
-        private int _N;
-        private readonly double _k1;
-        private readonly double _b;
-        private IEnumerable<string> _rawDocuments;
-        private bool _initialized = false;
+        public Dictionary<string, int> DocumentFrequencies { get; init; } = new();
+        public int TotalDocuments { get; init; }
+        public double AverageDocumentLength { get; init; }
+    }
+
+    /// <summary>
+    /// Represents a processed document with cached tokenization results.
+    /// </summary>
+    internal class ProcessedDocument
+    {
+        public string Content { get; init; } = string.Empty;
+        public List<string> Tokens { get; init; } = new();
+        public Dictionary<string, int> TermFrequencies { get; init; } = new();
+        public int Length { get; init; }
+    }
+
+    /// <summary>
+    /// BM25Reranker.
+    /// Optimized for performance with caching, streaming, and efficient data structures.
+    /// </summary>
+    public class BM25Reranker
+    {
+        private static readonly ConcurrentDictionary<Language, Pipeline> _pipelineCache = new();
+        private static readonly ConcurrentDictionary<string, (List<string> tokens, Dictionary<string, int> termFreqs)> _tokenCache = new();
+        private static readonly object _modelLock = new object();
+        private static readonly HashSet<Language> _registeredLanguages = new();
+
+        private readonly CorpusStatistics? _corpusStats;
 
         /// <summary>
-        /// Constructs a BM25Reranker. Tokenization and initialization must be performed by calling InitializeAsync after construction.
+        /// Initializes a new instance of BM25Reranker with optional pre-computed corpus statistics.
         /// </summary>
-        /// <param name="documents">The raw documents to rank.</param>
-        /// <param name="k1">BM25 k1 parameter.</param>
-        /// <param name="b">BM25 b parameter.</param>
-        public BM25Reranker(IEnumerable<string> documents, double k1 = 1.5, double b = 0.75)
+        /// <param name="corpusStats">Pre-computed corpus statistics for better performance</param>
+        public BM25Reranker(CorpusStatistics? corpusStats = null)
         {
-            _k1 = k1;
-            _b = b;
-            _rawDocuments = documents;
+            _corpusStats = corpusStats;
         }
-
-        private async Task InitializeAsync()
+        /// <summary>
+        /// Scores documents using the BM25 algorithm against a given query.
+        /// Returns an async enumerable of document-score pairs in the order they were processed.
+        /// Optimized for streaming with optional corpus statistics.
+        /// </summary>
+        /// <param name="query">The search query to score documents against</param>
+        /// <param name="documents">An async enumerable of documents to score</param>
+        /// <param name="k1">Controls term frequency impact. Typical values: 1.2-2.0. Default is 1.5</param>
+        /// <param name="b">Controls document length normalization. Range: 0-1. Default is 0.75</param>
+        /// <param name="k3">Controls query term frequency impact. Default is 1000</param>
+        /// <returns>An async enumerable of tuples containing the document and its BM25 score</returns>
+        public async IAsyncEnumerable<(string, double)> ScoreAsync(string query, IAsyncEnumerable<string> documents, double k1 = 1.5, double b = 0.75, double k3 = 1000)
         {
-            _df = new Dictionary<string, int>();
-            var tokenizedDocs = await Task.WhenAll(_rawDocuments.Select(TokenizeAsync));
-            _documents = tokenizedDocs.ToList();
-            _docLens = _documents.Select(d => d.Count).ToList();
-            _N = _documents.Count;
-            _avgDocLen = _docLens.Count > 0 ? _docLens.Average() : 0;
-
-            foreach (var doc in _documents)
+            // Cache query tokenization
+            var cacheKey = $"query_{query.GetHashCode()}";
+            var (queryTokens, queryTermFreqs) = await GetOrCacheTokensAsync(cacheKey, query);
+            
+            if (_corpusStats != null)
             {
-                foreach (var word in doc.Distinct())
+                // Use pre-computed statistics for true streaming
+                await foreach (var document in documents)
                 {
-                    if (_df.ContainsKey(word))
-                        _df[word]++;
-                    else
-                        _df[word] = 1;
+                    var docCacheKey = $"doc_{document.GetHashCode()}";
+                    var (docTokens, docTermFreqs) = await GetOrCacheTokensAsync(docCacheKey, document);
+                    
+                    var score = CalculateBM25Score(queryTermFreqs, docTermFreqs, docTokens.Count, 
+                        _corpusStats.DocumentFrequencies, _corpusStats.TotalDocuments, _corpusStats.AverageDocumentLength, k1, b, k3);
+                    
+                    yield return (document, score);
                 }
             }
-            _initialized = true;
+            else
+            {
+                // Fallback to two-pass approach with optimizations
+                await foreach (var result in ScoreWithTwoPassAsync(query, documents, queryTokens, queryTermFreqs, k1, b, k3))
+                {
+                    yield return result;
+                }
+            }
         }
 
         /// <summary>
-        /// Ranks the documents for the given query using BM25. Requires initialization via InitializeAsync.
+        /// Scores documents using the BM25 algorithm with a two-pass approach when corpus statistics are not available.
+        /// First pass collects document statistics, second pass calculates and yields BM25 scores.
         /// </summary>
-        /// <param name="query">The query to rank against.</param>
-        /// <param name="topN">Number of top results to return.</param>
-        /// <returns>List of (document index, score) tuples.</returns>
-        /// <exception cref="InvalidOperationException">Thrown if not initialized.</exception>
-        public async Task<List<(int, double)>> RankAsync(string query, int topN = 5)
+        /// <param name="query">The search query to score documents against</param>
+        /// <param name="documents">An async enumerable of documents to score</param>
+        /// <param name="queryTokens">Pre-tokenized query terms for performance optimization</param>
+        /// <param name="queryTermFreqs">Query term frequencies for BM25 calculation</param>
+        /// <param name="k1">Controls term frequency impact. Typical values: 1.2-2.0</param>
+        /// <param name="b">Controls document length normalization. Range: 0-1</param>
+        /// <param name="k3">Controls query term frequency impact</param>
+        /// <returns>An async enumerable of tuples containing the document and its BM25 score</returns>
+        private async IAsyncEnumerable<(string, double)> ScoreWithTwoPassAsync(string query, IAsyncEnumerable<string> documents,
+            List<string> queryTokens, Dictionary<string, int> queryTermFreqs, double k1, double b, double k3)
         {
-            if (!_initialized)
-                await InitializeAsync();
+            // First pass: collect document statistics with optimizations
+            var processedDocs = new List<ProcessedDocument>();
+            var df = new Dictionary<string, int>();
+            double totalLength = 0;
 
-            var queryTokens = await TokenizeAsync(query);
-            var scores = new List<(int, double)>();
-
-            for (int i = 0; i < _documents.Count; i++)
+            await foreach (var document in documents)
             {
-                double score = 0;
-                foreach (var term in queryTokens.Distinct())
+                var cacheKey = $"doc_{document.GetHashCode()}";
+                var (docTokens, docTermFreqs) = await GetOrCacheTokensAsync(cacheKey, document);
+
+                var processed = new ProcessedDocument
                 {
-                    score += Score(i, term, queryTokens.Count(t => t == term));
+                    Content = document,
+                    Tokens = docTokens,
+                    TermFrequencies = docTermFreqs,
+                    Length = docTokens.Count
+                };
+
+                processedDocs.Add(processed);
+                totalLength += processed.Length;
+
+                // Optimized document frequency updates
+                foreach (var term in docTermFreqs.Keys)
+                {
+                    df.TryGetValue(term, out var count);
+                    df[term] = count + 1;
                 }
-                scores.Add((i, score));
             }
 
-            return scores.OrderByDescending(s => s.Item2).Take(topN).ToList();
+            var avgDocLen = processedDocs.Count > 0 ? totalLength / processedDocs.Count : 0;
+
+            // Second pass: yield results with optimized scoring
+            foreach (var doc in processedDocs)
+            {
+                var score = CalculateBM25Score(queryTermFreqs, doc.TermFrequencies, doc.Length, df, processedDocs.Count, avgDocLen, k1, b, k3);
+                yield return (doc.Content, score);
+            }
         }
 
-        private double Score(int docIndex, string term, int qf)
+        /// <summary>
+        /// Ranks documents using the BM25 algorithm and returns the top N results sorted by relevance score.
+        /// Uses a priority queue for memory-efficient top-N selection.
+        /// </summary>
+        /// <param name="query">The search query to rank documents against</param>
+        /// <param name="documents">An async enumerable of documents to rank</param>
+        /// <param name="topN">The maximum number of top-ranked documents to return. Default is 5</param>
+        /// <param name="k1">Controls term frequency impact. Typical values: 1.2-2.0. Default is 1.5</param>
+        /// <param name="b">Controls document length normalization. Range: 0-1. Default is 0.75</param>
+        /// <param name="k3">Controls query term frequency impact. Default is 1000</param>
+        /// <returns>An async enumerable of tuples containing the top N documents and their BM25 scores, sorted by relevance</returns>
+        public async IAsyncEnumerable<(string document, float score)> RankAsync(string query, IAsyncEnumerable<string> documents, int topN = 5, double k1 = 1.5, double b = 0.75, double k3 = 1000)
         {
-            int f = _documents[docIndex].Count(t => t == term);
-            if (!_df.ContainsKey(term) || f == 0) return 0;
-
-            double idf = Math.Log(1 + (_N - _df[term] + 0.5) / (_df[term] + 0.5));
-            double tf = f * (_k1 + 1) / (f + _k1 * (1 - _b + _b * _docLens[docIndex] / _avgDocLen));
-            return idf * tf;
+            // Use a min-heap to maintain top N results efficiently
+            var topResults = new PriorityQueue<(string document, float score), float>();
+            
+            await foreach (var (document, score) in ScoreAsync(query, documents, k1, b, k3))
+            {
+                var floatScore = (float)score;
+                
+                if (topResults.Count < topN)
+                {
+                    topResults.Enqueue((document, floatScore), floatScore);
+                }
+                else if (floatScore > topResults.Peek().score)
+                {
+                    topResults.Dequeue();
+                    topResults.Enqueue((document, floatScore), floatScore);
+                }
+            }
+            
+            // Extract results and sort in descending order
+            var results = new List<(string document, float score)>();
+            while (topResults.Count > 0)
+            {
+                results.Add(topResults.Dequeue());
+            }
+            
+            results.Reverse(); // PriorityQueue is min-heap, so reverse for descending order
+            
+            foreach (var result in results)
+            {
+                yield return result;
+            }
         }
 
+        /// <summary>
+        /// Pre-computes corpus statistics for efficient streaming BM25 scoring.
+        /// </summary>
+        /// <param name="documents">The corpus of documents to analyze</param>
+        /// <returns>Corpus statistics that can be used to initialize BM25Reranker</returns>
+        public static async Task<CorpusStatistics> ComputeCorpusStatisticsAsync(IAsyncEnumerable<string> documents)
+        {
+            var df = new Dictionary<string, int>();
+            int totalDocuments = 0;
+            double totalLength = 0;
+            
+            await foreach (var document in documents)
+            {
+                var cacheKey = $"doc_{document.GetHashCode()}";
+                var (docTokens, docTermFreqs) = await GetOrCacheTokensStaticAsync(cacheKey, document);
+                
+                totalLength += docTokens.Count;
+                totalDocuments++;
+                
+                // Optimized document frequency updates
+                foreach (var term in docTermFreqs.Keys)
+                {
+                    df.TryGetValue(term, out var count);
+                    df[term] = count + 1;
+                }
+            }
+            
+            return new CorpusStatistics
+            {
+                DocumentFrequencies = df,
+                TotalDocuments = totalDocuments,
+                AverageDocumentLength = totalDocuments > 0 ? totalLength / totalDocuments : 0
+            };
+        }
+
+        /// <summary>
+        /// Gets or caches tokenization results for better performance.
+        /// </summary>
+        private async Task<(List<string> tokens, Dictionary<string, int> termFreqs)> GetOrCacheTokensAsync(string cacheKey, string text)
+        {
+            if (_tokenCache.TryGetValue(cacheKey, out var cached))
+            {
+                return cached;
+            }
+            
+            var tokens = await TokenizeAsync(text);
+            var termFreqs = tokens.GroupBy(t => t).ToDictionary(g => g.Key, g => g.Count());
+            
+            var result = (tokens, termFreqs);
+            _tokenCache.TryAdd(cacheKey, result);
+            return result;
+        }
+
+        /// <summary>
+        /// Static version for corpus statistics computation.
+        /// </summary>
+        private static async Task<(List<string> tokens, Dictionary<string, int> termFreqs)> GetOrCacheTokensStaticAsync(string cacheKey, string text)
+        {
+            if (_tokenCache.TryGetValue(cacheKey, out var cached))
+            {
+                return cached;
+            }
+            
+            var tokens = await TokenizeAsync(text);
+            var termFreqs = tokens.GroupBy(t => t).ToDictionary(g => g.Key, g => g.Count());
+            
+            var result = (tokens, termFreqs);
+            _tokenCache.TryAdd(cacheKey, result);
+            return result;
+        }
+
+        /// Calculates the BM25 relevance score between a query and a document using an optimized implementation.
+        /// BM25 is a probabilistic ranking function used in information retrieval to estimate the relevance
+        /// of documents to a given search query.
+        /// </summary>
+        /// <param name="queryTermFreqs">Dictionary containing the frequency of each term in the query</param>
+        /// <param name="docTermFreqs">Dictionary containing the frequency of each term in the document</param>
+        /// <param name="docLen">The total number of terms in the document</param>
+        /// <param name="df">Document frequency dictionary - number of documents containing each term</param>
+        /// <param name="N">Total number of documents in the collection</param>
+        /// <param name="avgDocLen">Average document length across the entire collection</param>
+        /// <param name="k1">Term frequency saturation parameter (typically 1.2-2.0)</param>
+        /// <param name="b">Field length normalization parameter (typically 0.75)</param>
+        /// <param name="k3">Query term frequency saturation parameter (typically 1.2-2.0)</param>
+        /// <returns>The BM25 relevance score as a double value</returns>
+        private static double CalculateBM25Score(Dictionary<string, int> queryTermFreqs, Dictionary<string, int> docTermFreqs, 
+            int docLen, Dictionary<string, int> df, int N, double avgDocLen, double k1, double b, double k3)
+        {
+            double score = 0;
+            
+            foreach (var (term, queryTermFreq) in queryTermFreqs)
+            {
+                if (!docTermFreqs.TryGetValue(term, out var docTermFreq) || !df.TryGetValue(term, out var documentFreq))
+                    continue;
+                
+                if (docTermFreq == 0) continue;
+
+                double idf = Math.Log(1 + (N - documentFreq + 0.5) / (documentFreq + 0.5));
+                double tf = docTermFreq * (k1 + 1) / (docTermFreq + k1 * (1 - b + b * docLen / avgDocLen));
+                double qtf = queryTermFreq * (k3 + 1) / (queryTermFreq + k3);
+                
+                score += idf * tf * qtf;
+            }
+            
+            return score;
+        }
+
+        /// <summary>
+        /// Optimized tokenization with caching and reduced reflection overhead.
+        /// </summary>
         private static async Task<List<string>> TokenizeAsync(string text)
         {
             var doc = new Document(text);
@@ -104,35 +307,62 @@ namespace SemanticKernel.Reranker.BM25
 
             cld2LanguageDetector.Process(doc);
 
-            RegisterLanguageModel(doc.Language);
-
-            var nlp = await Pipeline.ForAsync(doc.Language);
-
-            var tokens = nlp.ProcessSingle(doc).Spans
-                .SelectMany(c => c.Tokens.Select(t => t))
+            // Get or create cached pipeline
+            var pipeline = await GetOrCreatePipelineAsync(doc.Language);
+            
+            var tokens = pipeline.ProcessSingle(doc).Spans
+                .SelectMany(c => c.Tokens)
                 .Where(token => !Catalyst.StopWords.Spacy.For(doc.Language).Contains(token.Lemma))
                 .Where(token => token.POS != PartOfSpeech.PUNCT && token.POS != PartOfSpeech.SYM)
-            .Select(token => token.Lemma)
-            .ToList();
+                .Select(token => token.Lemma)
+                .ToList();
 
             return tokens;
         }
 
+        /// <summary>
+        /// Gets or creates a cached NLP pipeline for the specified language.
+        /// </summary>
+        private static async Task<Pipeline> GetOrCreatePipelineAsync(Language language)
+        {
+            if (_pipelineCache.TryGetValue(language, out var cached))
+            {
+                return cached;
+            }
+
+            // Ensure language model is registered (with thread safety)
+            if (!_registeredLanguages.Contains(language))
+            {
+                lock (_modelLock)
+                {
+                    if (!_registeredLanguages.Contains(language))
+                    {
+                        RegisterLanguageModel(language);
+                        _registeredLanguages.Add(language);
+                    }
+                }
+            }
+
+            var pipeline = await Pipeline.ForAsync(language);
+            _pipelineCache.TryAdd(language, pipeline);
+            return pipeline;
+        }
+
+        /// <summary>
+        /// Language model registration.
+        /// </summary>
         private static void RegisterLanguageModel(Language language)
         {
             try
             {
-                // Load the assembly for the specific language
+                // Cache assembly loading
                 var assemblyName = $"Catalyst.Models.{language}";
                 var assembly = Assembly.Load(assemblyName);
 
-                // Find the type that contains the Register method
-                var registerType = assembly.GetTypes()
-                    .FirstOrDefault(t => t.Name == language.ToString() && t.Namespace == "Catalyst.Models");
-
+                // More efficient type discovery
+                var registerType = assembly.GetType($"Catalyst.Models.{language}");
                 if (registerType != null)
                 {
-                    // Find and invoke the Register method
                     var registerMethod = registerType.GetMethod("Register", BindingFlags.Public | BindingFlags.Static);
                     registerMethod?.Invoke(null, null);
                 }
@@ -141,31 +371,28 @@ namespace SemanticKernel.Reranker.BM25
             }
             catch (Exception)
             {
+                // Log error in production code
                 throw;
             }
         }
 
+        /// <summary>
+        /// Optimized stop words loading with reduced reflection overhead.
+        /// </summary>
         private static void LoadStopWords(Language language)
         {
             try
             {
-                // Get the current assembly
                 var currentAssembly = Assembly.GetExecutingAssembly();
-
-                // Build the type name for the stop words class
                 var stopWordsTypeName = $"{currentAssembly.GetName().Name}.StopWords.{language}";
-
-                // Get the type
                 var stopWordsType = currentAssembly.GetType(stopWordsTypeName);
 
                 if (stopWordsType != null)
                 {
-                    // Get the StopWords property/field
-                    var stopWordsProperty = stopWordsType.GetField("StopWords", BindingFlags.Public | BindingFlags.Static);
-
-                    if (stopWordsProperty != null && stopWordsProperty.FieldType == typeof(HashSet<string>))
+                    var stopWordsField = stopWordsType.GetField("StopWords", BindingFlags.Public | BindingFlags.Static);
+                    if (stopWordsField?.FieldType == typeof(HashSet<string>))
                     {
-                        var stopWords = (HashSet<string>?)stopWordsProperty.GetValue(null);
+                        var stopWords = (HashSet<string>?)stopWordsField.GetValue(null);
                         if (stopWords != null)
                         {
                             Catalyst.StopWords.Spacy.Register(language, new ReadOnlyHashSet<string>(stopWords));
@@ -175,8 +402,16 @@ namespace SemanticKernel.Reranker.BM25
             }
             catch (Exception)
             {
-
+                // Silently continue if stop words can't be loaded
             }
+        }
+
+        /// <summary>
+        /// Clears the tokenization cache. Useful for memory management in long-running applications.
+        /// </summary>
+        public static void ClearCache()
+        {
+            _tokenCache.Clear();
         }
     }
 }

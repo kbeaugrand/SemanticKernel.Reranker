@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         package: 
-        - SemanticKernel.Rankers.Abstrations
+        - SemanticKernel.Rankers.Abstractions
         - SemanticKernel.Rankers.BM25
 
     steps:
@@ -24,14 +24,14 @@ jobs:
         dotnet-version: 8.x
     - name: Restore dependencies
       run: dotnet restore
-      working-directory: ./src/
+      working-directory: ./
     - name: Build
       run: dotnet build --no-restore --configuration Release
-      working-directory: ./src/
+      working-directory: ./
     - name: Pack
       run: dotnet pack --configuration Release /p:Version=${{ github.event.release.tag_name }}
-      working-directory: ./src/
+      working-directory: ./
     - name: Push to NuGet
       run: |
         dotnet nuget push **/${{ matrix.package }}.*.nupkg --source nuget.org --api-key ${{ secrets.NUGET_API_KEY }} --skip-duplicate
-      working-directory: ./src/
+      working-directory: ./

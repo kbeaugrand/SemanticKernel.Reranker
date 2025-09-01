@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     
     <!-- NuGet Package Properties -->
-    <PackageId>SemanticKernel.Reranker.BM25</PackageId>
+  <PackageId>SemanticKernel.Rankers.BM25</PackageId>
     <Title>Semantic Kernel BM25 Reranker</Title>
     <Description>A BM25 reranker implementation for Semantic Kernel that provides efficient text ranking capabilities using the BM25 algorithm with support for multiple languages including English, French, and German.</Description>
     <Authors>Kevin Beaugrand</Authors>
@@ -14,8 +14,8 @@
     <Product>Semantic Kernel BM25 Reranker</Product>
     <Copyright>© 2025 Kevin Beaugrand. All rights reserved.</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/kbeaugrand/SemanticKernel.Reranker</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/kbeaugrand/SemanticKernel.Reranker</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/kbeaugrand/SemanticKernel.Rankers</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/kbeaugrand/SemanticKernel.Rankers</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>semantic-kernel;bm25;reranker;nlp;text-ranking;machine-learning;information-retrieval</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -34,8 +34,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\README.md" Pack="true" PackagePath="\" />
-    <None Include="..\LICENSE.txt" Pack="true" PackagePath="\" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\LICENSE.txt" Pack="true" PackagePath="\" />
     <!-- Uncomment the line below if you have a package icon -->
     <!-- <None Include="..\icon.png" Pack="true" PackagePath="\" /> -->
   </ItemGroup>

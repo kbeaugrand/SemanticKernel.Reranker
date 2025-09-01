@@ -1,9 +1,9 @@
-[![Build & Test](https://github.com/kbeaugrand/SemanticKernel.Reranker/actions/workflows/build_tests.yml/badge.svg)](https://github.com/kbeaugrand/SemanticKernel.Reranker/actions/workflows/build_tests.yml)
-[![Create Release](https://github.com/kbeaugrand/SemanticKernel.Reranker/actions/workflows/publish.yml/badge.svg)](https://github.com/kbeaugrand/SemanticKernel.Reranker/actions/workflows/publish.yml)
-[![Version](https://img.shields.io/github/v/release/kbeaugrand/SemanticKernel.Reranker)](https://img.shields.io/github/v/release/kbeaugrand/SemanticKernel.Reranker)
-[![License](https://img.shields.io/github/license/kbeaugrand/SemanticKernel.Reranker)](https://img.shields.io/github/v/release/kbeaugrand/SemanticKernel.Reranker)
+![Build & Test](https://github.com/kbeaugrand/SemanticKernel.Rankers/actions/workflows/build_tests.yml/badge.svg)
+![Create Release](https://github.com/kbeaugrand/SemanticKernel.Rankers/actions/workflows/publish.yml/badge.svg)
+![Version](https://img.shields.io/github/v/release/kbeaugrand/SemanticKernel.Rankers)
+![License](https://img.shields.io/github/license/kbeaugrand/SemanticKernel.Rankers)
 
-# BM25 Reranker
+# BM25 Rankers
 
 **A robust C# library for reranking search results using the classic BM25 algorithm with advanced natural language processing, leveraging the Catalyst NLP library.**
 

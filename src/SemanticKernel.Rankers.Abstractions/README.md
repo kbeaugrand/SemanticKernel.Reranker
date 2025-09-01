@@ -1,20 +1,6 @@
-![Build & Test](https://github.com/kbeaugrand/SemanticKernel.Rankers/actions/workflows/build_tests.yml/badge.svg)
-![Create Release](https://github.com/kbeaugrand/SemanticKernel.Rankers/actions/workflows/publish.yml/badge.svg)
-![Version](https://img.shields.io/github/v/release/kbeaugrand/SemanticKernel.Rankers)
-![License](https://img.shields.io/github/license/kbeaugrand/SemanticKernel.Rankers)
-
 # Semantic Kernel Rankers
 
 **A robust C# library for reranking search results using Semantic Kernel**
-
----
-
-## Table of Contents
-
-- [Introduction](#introduction)
-- [License](#license)
-
----
 
 ## Introduction
 

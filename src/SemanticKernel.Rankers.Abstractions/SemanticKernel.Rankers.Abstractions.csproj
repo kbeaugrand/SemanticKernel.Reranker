@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- NuGet Package Properties -->
+    <PackageId>SemanticKernel.Rankers.Abstractions</PackageId>
+    <Title>Semantic Kernel Rankers Abstractions</Title>
+    <Description>A Ranker implementation for Semantic Kernel that provides efficient text ranking capabilities.</Description>
+    <Authors>Kevin Beaugrand</Authors>
+    <Company>Kevin Beaugrand</Company>
+    <Product>Semantic Kernel Rankers</Product>
+    <Copyright>© 2025 Kevin Beaugrand. All rights reserved.</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/kbeaugrand/SemanticKernel.Rankers</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/kbeaugrand/SemanticKernel.Rankers</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>semantic-kernel;bm25;reranker;nlp;text-ranking;machine-learning;information-retrieval</PackageTags>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SemanticKernel.Abstractions" Version="1.64.0" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <None Include="..\..\LICENSE.txt" Link="LICENSE.txt">
+      <PackagePath>\</PackagePath>
+      <Pack>true</Pack>
+    </None>
+  </ItemGroup>
+
+</Project>

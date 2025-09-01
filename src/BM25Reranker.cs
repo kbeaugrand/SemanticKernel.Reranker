@@ -54,6 +54,7 @@ namespace SemanticKernel.Reranker.BM25
             _corpusStats = corpusStats;
             _supportedLanguages = supportedLanguages;
         }
+        
         /// <summary>
         /// Scores documents using the BM25 algorithm against a given query.
         /// Returns an async enumerable of document-score pairs in the order they were processed.

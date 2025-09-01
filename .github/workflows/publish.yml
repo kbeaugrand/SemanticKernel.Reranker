@@ -13,6 +13,7 @@ jobs:
     strategy:
       matrix:
         package: 
+        - SemanticKernel.Rankers.Abstrations
         - SemanticKernel.Rankers.BM25
 
     steps:

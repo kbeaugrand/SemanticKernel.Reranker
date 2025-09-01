@@ -5,6 +5,7 @@ using Catalyst;
 using Catalyst.Models;
 using Microsoft.Extensions.VectorData;
 using Mosaik.Core;
+using SemanticKernel.Rankers.Abstractions;
 using Version = Mosaik.Core.Version;
 
 namespace SemanticKernel.Rankers.BM25
@@ -34,7 +35,7 @@ namespace SemanticKernel.Rankers.BM25
     /// BM25Reranker.
     /// Optimized for performance with caching, streaming, and efficient data structures.
     /// </summary>
-    public class BM25Reranker
+    public class BM25Reranker : IRanker
     {
         private static readonly ConcurrentDictionary<Language, Pipeline> _pipelineCache = new();
         private static readonly ConcurrentDictionary<string, (List<string> tokens, Dictionary<string, int> termFreqs)> _tokenCache = new();
@@ -44,17 +45,30 @@ namespace SemanticKernel.Rankers.BM25
         private readonly CorpusStatistics? _corpusStats;
         private readonly HashSet<Language>? _supportedLanguages;
 
+        private readonly double _k1;
+        private readonly double _b;
+        private readonly double _k3;
+
         /// <summary>
         /// Initializes a new instance of BM25Reranker with optional pre-computed corpus statistics and supported languages.
         /// </summary>
         /// <param name="corpusStats">Pre-computed corpus statistics for better performance</param>
         /// <param name="supportedLanguages">Optional set of supported languages. If null, all languages are supported.</param>
-        public BM25Reranker(CorpusStatistics? corpusStats = null, HashSet<Language>? supportedLanguages = null)
+        public BM25Reranker(
+            CorpusStatistics? corpusStats = null, 
+            HashSet<Language>? supportedLanguages = null,
+            double k1 = 1.5, 
+            double b = 0.75, 
+            double k3 = 1000)
         {
             _corpusStats = corpusStats;
             _supportedLanguages = supportedLanguages;
+
+            _k1 = k1;
+            _b = b;
+            _k3 = k3;
         }
-        
+
         /// <summary>
         /// Scores documents using the BM25 algorithm against a given query.
         /// Returns an async enumerable of document-score pairs in the order they were processed.
@@ -66,12 +80,12 @@ namespace SemanticKernel.Rankers.BM25
         /// <param name="b">Controls document length normalization. Range: 0-1. Default is 0.75</param>
         /// <param name="k3">Controls query term frequency impact. Default is 1000</param>
         /// <returns>An async enumerable of tuples containing the document and its BM25 score</returns>
-        public async IAsyncEnumerable<(string DocumentText, double Score)> ScoreAsync(string query, IAsyncEnumerable<string> documents, double k1 = 1.5, double b = 0.75, double k3 = 1000)
+        public async IAsyncEnumerable<(string DocumentText, double Score)> ScoreAsync(string query, IAsyncEnumerable<string> documents)
         {
             // Cache query tokenization
             var cacheKey = $"query_{query.GetHashCode()}";
             var (queryTokens, queryTermFreqs) = await GetOrCacheTokensAsync(cacheKey, query);
-            
+
             if (_corpusStats != null)
             {
                 // Use pre-computed statistics for true streaming
@@ -79,17 +93,17 @@ namespace SemanticKernel.Rankers.BM25
                 {
                     var docCacheKey = $"doc_{document.GetHashCode()}";
                     var (docTokens, docTermFreqs) = await GetOrCacheTokensAsync(docCacheKey, document);
-                    
-                    var score = CalculateBM25Score(queryTermFreqs, docTermFreqs, docTokens.Count, 
-                        _corpusStats.DocumentFrequencies, _corpusStats.TotalDocuments, _corpusStats.AverageDocumentLength, k1, b, k3);
-                    
+
+                    var score = CalculateBM25Score(queryTermFreqs, docTermFreqs, docTokens.Count,
+                        _corpusStats.DocumentFrequencies, _corpusStats.TotalDocuments, _corpusStats.AverageDocumentLength);
+
                     yield return (document, score);
                 }
             }
             else
             {
                 // Fallback to two-pass approach with optimizations
-                await foreach (var result in ScoreWithTwoPassAsync(query, documents, queryTokens, queryTermFreqs, k1, b, k3))
+                await foreach (var result in ScoreWithTwoPassAsync(query, documents, queryTokens, queryTermFreqs))
                 {
                     yield return result;
                 }
@@ -111,7 +125,7 @@ namespace SemanticKernel.Rankers.BM25
         /// <param name="b">Controls document length normalization. Range: 0-1. Default is 0.75</param>
         /// <param name="k3">Controls query term frequency impact. Default is 1000</param>
         /// <returns>An async enumerable of tuples containing the VectorSearchResult and its BM25 score</returns>
-        public async IAsyncEnumerable<(VectorSearchResult<T> Result, double Score)> ScoreAsync<T>(string query, IAsyncEnumerable<VectorSearchResult<T>> searchResults, Expression<Func<T, string>> textProperty, double k1 = 1.5, double b = 0.75, double k3 = 1000)
+        public async IAsyncEnumerable<(VectorSearchResult<T> Result, double Score)> ScoreAsync<T>(string query, IAsyncEnumerable<VectorSearchResult<T>> searchResults, Expression<Func<T, string>> textProperty)
         {
             var searchResultsList = new List<VectorSearchResult<T>>();
             var documentTexts = new List<string>();
@@ -125,7 +139,7 @@ namespace SemanticKernel.Rankers.BM25
             }
 
             var index = 0;
-            await foreach (var result in ScoreAsync(query, ToAsyncEnumerable(documentTexts), k1, b, k3))
+            await foreach (var result in ScoreAsync(query, ToAsyncEnumerable(documentTexts)))
             {
                 yield return (searchResultsList[index], result.Score);
                 index++;
@@ -153,7 +167,7 @@ namespace SemanticKernel.Rankers.BM25
         /// <param name="k3">Controls query term frequency impact</param>
         /// <returns>An async enumerable of tuples containing the document and its BM25 score</returns>
         private async IAsyncEnumerable<(string, double)> ScoreWithTwoPassAsync(string query, IAsyncEnumerable<string> documents,
-            List<string> queryTokens, Dictionary<string, int> queryTermFreqs, double k1, double b, double k3)
+            List<string> queryTokens, Dictionary<string, int> queryTermFreqs)
         {
             // First pass: collect document statistics with optimizations
             var processedDocs = new List<ProcessedDocument>();
@@ -189,7 +203,7 @@ namespace SemanticKernel.Rankers.BM25
             // Second pass: yield results with optimized scoring
             foreach (var doc in processedDocs)
             {
-                var score = CalculateBM25Score(queryTermFreqs, doc.TermFrequencies, doc.Length, df, processedDocs.Count, avgDocLen, k1, b, k3);
+                var score = CalculateBM25Score(queryTermFreqs, doc.TermFrequencies, doc.Length, df, processedDocs.Count, avgDocLen);
                 yield return (doc.Content, score);
             }
         }
@@ -205,15 +219,15 @@ namespace SemanticKernel.Rankers.BM25
         /// <param name="b">Controls document length normalization. Range: 0-1. Default is 0.75</param>
         /// <param name="k3">Controls query term frequency impact. Default is 1000</param>
         /// <returns>An async enumerable of tuples containing the top N documents and their BM25 scores, sorted by relevance</returns>
-        public async IAsyncEnumerable<(string DocumentText, double Score)> RankAsync(string query, IAsyncEnumerable<string> documents, int topN = 5, double k1 = 1.5, double b = 0.75, double k3 = 1000)
+        public async IAsyncEnumerable<(string DocumentText, double Score)> RankAsync(string query, IAsyncEnumerable<string> documents, int topN = 5)
         {
             // Use a min-heap to maintain top N results efficiently
             var topResults = new PriorityQueue<(string document, double score), double>();
 
-            await foreach (var (document, score) in ScoreAsync(query, documents, k1, b, k3))
+            await foreach (var (document, score) in ScoreAsync(query, documents))
             {
                 var floatScore = (float)score;
-                
+
                 if (topResults.Count < topN)
                 {
                     topResults.Enqueue((document, floatScore), floatScore);
@@ -224,16 +238,16 @@ namespace SemanticKernel.Rankers.BM25
                     topResults.Enqueue((document, floatScore), floatScore);
                 }
             }
-            
+
             // Extract results and sort in descending order
             var results = new List<(string document, double score)>();
             while (topResults.Count > 0)
             {
                 results.Add(topResults.Dequeue());
             }
-            
+
             results.Reverse(); // PriorityQueue is min-heap, so reverse for descending order
-            
+
             foreach (var result in results)
             {
                 yield return result;
@@ -261,11 +275,11 @@ namespace SemanticKernel.Rankers.BM25
         /// characteristics as the core ranking implementation, including efficient top-N selection using
         /// a priority queue for memory optimization.
         /// </remarks>
-        public async IAsyncEnumerable<(VectorSearchResult<T> Result, double Score)> RankAsync<T>(string query, IAsyncEnumerable<VectorSearchResult<T>> documents, Expression<Func<T, string>> textProperty, int topN = 5, double k1 = 1.5, double b = 0.75, double k3 = 1000)
+        public async IAsyncEnumerable<(VectorSearchResult<T> Result, double Score)> RankAsync<T>(string query, IAsyncEnumerable<VectorSearchResult<T>> documents, Expression<Func<T, string>> textProperty, int topN = 5)
         {
             var topResults = new PriorityQueue<(VectorSearchResult<T> document, double score), double>();
 
-            await foreach (var (document, score) in ScoreAsync(query, documents, textProperty, k1, b, k3))
+            await foreach (var (document, score) in ScoreAsync(query, documents, textProperty))
             {
                 var floatScore = (float)score;
 
@@ -280,15 +294,15 @@ namespace SemanticKernel.Rankers.BM25
                 }
             }
 
-             // Extract results and sort in descending order
+            // Extract results and sort in descending order
             var results = new List<(VectorSearchResult<T> document, double score)>();
             while (topResults.Count > 0)
             {
                 results.Add(topResults.Dequeue());
             }
-            
+
             results.Reverse(); // PriorityQueue is min-heap, so reverse for descending order
-            
+
             foreach (var result in results)
             {
                 yield return result;
@@ -339,10 +353,10 @@ namespace SemanticKernel.Rankers.BM25
             {
                 return cached;
             }
-            
+
             var tokens = await TokenizeAsync(text);
             var termFreqs = tokens.GroupBy(t => t).ToDictionary(g => g.Key, g => g.Count());
-            
+
             var result = (tokens, termFreqs);
             _tokenCache.TryAdd(cacheKey, result);
             return result;
@@ -357,10 +371,10 @@ namespace SemanticKernel.Rankers.BM25
             {
                 return cached;
             }
-            
+
             var tokens = await TokenizeStaticAsync(text);
             var termFreqs = tokens.GroupBy(t => t).ToDictionary(g => g.Key, g => g.Count());
-            
+
             var result = (tokens, termFreqs);
             _tokenCache.TryAdd(cacheKey, result);
             return result;
@@ -380,25 +394,25 @@ namespace SemanticKernel.Rankers.BM25
         /// <param name="b">Field length normalization parameter (typically 0.75)</param>
         /// <param name="k3">Query term frequency saturation parameter (typically 1.2-2.0)</param>
         /// <returns>The BM25 relevance score as a double value</returns>
-        private static double CalculateBM25Score(Dictionary<string, int> queryTermFreqs, Dictionary<string, int> docTermFreqs, 
-            int docLen, Dictionary<string, int> df, int N, double avgDocLen, double k1, double b, double k3)
+        private double CalculateBM25Score(Dictionary<string, int> queryTermFreqs, Dictionary<string, int> docTermFreqs,
+            int docLen, Dictionary<string, int> df, int N, double avgDocLen)
         {
             double score = 0;
-            
+
             foreach (var (term, queryTermFreq) in queryTermFreqs)
             {
                 if (!docTermFreqs.TryGetValue(term, out var docTermFreq) || !df.TryGetValue(term, out var documentFreq))
                     continue;
-                
+
                 if (docTermFreq == 0) continue;
 
                 double idf = Math.Log(1 + (N - documentFreq + 0.5) / (documentFreq + 0.5));
-                double tf = docTermFreq * (k1 + 1) / (docTermFreq + k1 * (1 - b + b * docLen / avgDocLen));
-                double qtf = queryTermFreq * (k3 + 1) / (queryTermFreq + k3);
-                
+                double tf = docTermFreq * (_k1 + 1) / (docTermFreq + _k1 * (1 - _b + _b * docLen / avgDocLen));
+                double qtf = queryTermFreq * (_k3 + 1) / (queryTermFreq + _k3);
+
                 score += idf * tf * qtf;
             }
-            
+
             return score;
         }
 
@@ -414,7 +428,7 @@ namespace SemanticKernel.Rankers.BM25
 
             // Get or create cached pipeline
             var pipeline = await GetOrCreatePipelineAsync(doc.Language);
-            
+
             var tokens = pipeline.ProcessSingle(doc).Spans
                 .SelectMany(c => c.Tokens)
                 .Where(token => !Catalyst.StopWords.Spacy.For(doc.Language).Contains(token.Lemma))
@@ -441,7 +455,7 @@ namespace SemanticKernel.Rankers.BM25
             }
 
             var pipeline = await GetOrCreatePipelineStaticAsync(doc.Language);
-            
+
             var tokens = pipeline.ProcessSingle(doc).Spans
                 .SelectMany(c => c.Tokens)
                 .Where(token => !Catalyst.StopWords.Spacy.For(doc.Language).Contains(token.Lemma))

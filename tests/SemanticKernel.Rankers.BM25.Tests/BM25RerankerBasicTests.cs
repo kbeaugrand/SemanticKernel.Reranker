@@ -1,9 +1,9 @@
 using FluentAssertions;
 using Mosaik.Core;
-using SemanticKernel.Reranker.BM25;
+using SemanticKernel.Rankers.BM25;
 using Xunit;
 
-namespace SemanticKernel.Reranker.BM25.Tests;
+namespace SemanticKernel.Rankers.BM25.Tests;
 
 public class BM25RerankerBasicTests
 {

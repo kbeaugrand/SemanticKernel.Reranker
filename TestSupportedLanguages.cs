@@ -1,5 +1,5 @@
 using Catalyst;
-using SemanticKernel.Reranker.BM25;
+using SemanticKernel.Rankers.BM25;
 
 // Test 1: Default behavior (no language restrictions)
 Console.WriteLine("=== Test 1: Default behavior (no language restrictions) ===");

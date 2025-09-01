@@ -1,6 +1,6 @@
 ﻿// English stop words from spacy: https://github.com/explosion/spaCy/blob/master/spacy/lang/en/stop_words.py
 
-namespace SemanticKernel.Reranker.BM25.StopWords
+namespace SemanticKernel.Rankers.BM25.StopWords
 {
     internal static class English
     {

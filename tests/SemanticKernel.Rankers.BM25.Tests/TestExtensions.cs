@@ -1,4 +1,4 @@
-namespace SemanticKernel.Reranker.BM25.Tests;
+namespace SemanticKernel.Rankers.BM25.Tests;
 
 /// <summary>
 /// Extension methods to support testing async enumerables

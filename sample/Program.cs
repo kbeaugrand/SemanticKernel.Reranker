@@ -1,4 +1,4 @@
-﻿using SemanticKernel.Reranker.BM25;
+﻿using SemanticKernel.Rankers.BM25;
 using System.Diagnostics;
 
 namespace BM25Sample

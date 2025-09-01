@@ -7,7 +7,7 @@ using Microsoft.Extensions.VectorData;
 using Mosaik.Core;
 using Version = Mosaik.Core.Version;
 
-namespace SemanticKernel.Reranker.BM25
+namespace SemanticKernel.Rankers.BM25
 {
     /// <summary>
     /// Contains pre-computed corpus statistics for efficient BM25 scoring.

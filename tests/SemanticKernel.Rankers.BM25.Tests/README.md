@@ -5,7 +5,7 @@ This test suite provides comprehensive unit testing for the BM25 Reranker implem
 ## Test Structure
 
 ### Test Projects
-- **SemanticKernel.Reranker.BM25.Tests**: Main test project containing all unit tests
+- **SemanticKernel.Rankers.BM25.Tests**: Main test project containing all unit tests
 
 ### Test Categories
 
@@ -45,19 +45,19 @@ This test suite provides comprehensive unit testing for the BM25 Reranker implem
 ### Command Line
 ```bash
 # Run all tests
-dotnet test tests/SemanticKernel.Reranker.BM25.Tests.csproj
+dotnet test tests/SemanticKernel.Rankers.BM25.Tests.csproj
 
 # Run tests with detailed output
-dotnet test tests/SemanticKernel.Reranker.BM25.Tests.csproj --verbosity normal
+dotnet test tests/SemanticKernel.Rankers.BM25.Tests.csproj --verbosity normal
 
 # Run tests with coverage
-dotnet test tests/SemanticKernel.Reranker.BM25.Tests.csproj --collect:"XPlat Code Coverage"
+dotnet test tests/SemanticKernel.Rankers.BM25.Tests.csproj --collect:"XPlat Code Coverage"
 
 # Run specific test class
-dotnet test tests/SemanticKernel.Reranker.BM25.Tests.csproj --filter "FullyQualifiedName~CorpusStatisticsUnitTests"
+dotnet test tests/SemanticKernel.Rankers.BM25.Tests.csproj --filter "FullyQualifiedName~CorpusStatisticsUnitTests"
 
 # Run tests matching a pattern
-dotnet test tests/SemanticKernel.Reranker.BM25.Tests.csproj --filter "Name~ScoreAsync"
+dotnet test tests/SemanticKernel.Rankers.BM25.Tests.csproj --filter "Name~ScoreAsync"
 ```
 
 ### Visual Studio

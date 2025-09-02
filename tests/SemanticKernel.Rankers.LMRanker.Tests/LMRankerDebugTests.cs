@@ -138,9 +138,9 @@ public class LMRankerDebugTests : IDisposable
         var builder = Kernel.CreateBuilder();
 
         var config = new ConfigurationBuilder()
-            .AddEnvironmentVariables()
             .AddJsonFile("appsettings.json", optional: false)
             .AddJsonFile("appsettings.Development.json", optional: true)
+            .AddEnvironmentVariables()
             .Build();
 
         // Try Azure OpenAI first

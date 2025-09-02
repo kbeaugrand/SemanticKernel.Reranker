@@ -29,22 +29,6 @@ Both rankers support sophisticated tokenization, lemmatization, stop word remova
 
 ---
 
-## Installation
-
-Install via NuGet:
-
-```shell
-dotnet add package SemanticKernel.Rankers
-```
-
-Or using the .NET CLI:
-
-```shell
-dotnet add package SemanticKernel.Rankers
-```
-
----
-
 ## Usage Examples
 
 ### BM25Ranker

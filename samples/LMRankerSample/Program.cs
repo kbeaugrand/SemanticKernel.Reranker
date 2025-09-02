@@ -84,20 +84,20 @@ namespace LMRankerSample
         private static bool ConfigureAIService(IKernelBuilder builder)
         {
             // Option 1: Azure OpenAI (Recommended for production)
-            var endpoint = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT");
-            var apiKey = Environment.GetEnvironmentVariable("AZURE_OPENAI_API_KEY");
-            var deploymentName = Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT_NAME") ?? "gpt-4.1-mini";
-
-            if (!string.IsNullOrEmpty(endpoint) && !string.IsNullOrEmpty(apiKey))
-            {
-                builder.AddAzureOpenAIChatCompletion(
-                    deploymentName: deploymentName,
-                    endpoint: endpoint,
-                    apiKey: apiKey
-                );
-                Console.WriteLine($"✅ Configured Azure OpenAI: {deploymentName}");
-                return true;
-            }
+            // var endpoint = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT");
+            // var apiKey = Environment.GetEnvironmentVariable("AZURE_OPENAI_API_KEY");
+            // var deploymentName = Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT_NAME") ?? "gpt-4";
+            // 
+            // if (!string.IsNullOrEmpty(endpoint) && !string.IsNullOrEmpty(apiKey))
+            // {
+            //     builder.AddAzureOpenAIChatCompletion(
+            //         deploymentName: deploymentName,
+            //         endpoint: endpoint,
+            //         apiKey: apiKey
+            //     );
+            //     Console.WriteLine($"✅ Configured Azure OpenAI: {deploymentName}");
+            //     return true;
+            // }
 
             // Option 2: OpenAI
             // var openAIKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");

@@ -15,7 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\src\SemanticKernel.Rankers.BM25\SemanticKernel.Rankers.BM25.csproj" />
+    <ProjectReference Include="..\..\src\SemanticKernel.Rankers.BM25\SemanticKernel.Rankers.BM25.csproj" />
   </ItemGroup>
 
 </Project>

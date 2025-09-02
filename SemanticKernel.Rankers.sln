@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.13.36105.23
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BM25Sample", "sample\BM25Sample.csproj", "{B79335AD-DC75-4C70-BA4C-D8AF62E1E772}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BM25Sample", "samples\BM25Sample\BM25Sample.csproj", "{B79335AD-DC75-4C70-BA4C-D8AF62E1E772}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SemanticKernel.Rankers.BM25", "src\SemanticKernel.Rankers.BM25\SemanticKernel.Rankers.BM25.csproj", "{EFB89E10-F254-4D3E-86A9-388651AFB895}"
 EndProject
@@ -19,6 +19,14 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "BM25Ranker", "BM25Ranker", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SemanticKernel.Rankers.Abstractions", "src\SemanticKernel.Rankers.Abstractions\SemanticKernel.Rankers.Abstractions.csproj", "{DA2DF120-1050-4229-B950-453CA30F7C28}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "LMRanker", "LMRanker", "{4B25B4F7-5692-45A3-8DE4-5962DF90D958}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SemanticKernel.Rankers.LMRanker", "src\SemanticKernel.Rankers.LMRanker\SemanticKernel.Rankers.LMRanker.csproj", "{989ADC10-BE7F-455E-8857-9C4BFB58AB33}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SemanticKernel.Rankers.LMRanker.Tests", "tests\SemanticKernel.Rankers.LMRanker.Tests\SemanticKernel.Rankers.LMRanker.Tests.csproj", "{C5A8B7E9-1F2D-4E3B-8C9A-6D7E8F9012AB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LMRankerSample", "samples\LMRankerSample\LMRankerSample.csproj", "{F3E6D8C9-4A2B-5C1D-9E8F-1A3B5C7D9E2F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -42,6 +50,18 @@ Global
 		{DA2DF120-1050-4229-B950-453CA30F7C28}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DA2DF120-1050-4229-B950-453CA30F7C28}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DA2DF120-1050-4229-B950-453CA30F7C28}.Release|Any CPU.Build.0 = Release|Any CPU
+		{989ADC10-BE7F-455E-8857-9C4BFB58AB33}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{989ADC10-BE7F-455E-8857-9C4BFB58AB33}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{989ADC10-BE7F-455E-8857-9C4BFB58AB33}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{989ADC10-BE7F-455E-8857-9C4BFB58AB33}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C5A8B7E9-1F2D-4E3B-8C9A-6D7E8F9012AB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C5A8B7E9-1F2D-4E3B-8C9A-6D7E8F9012AB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C5A8B7E9-1F2D-4E3B-8C9A-6D7E8F9012AB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C5A8B7E9-1F2D-4E3B-8C9A-6D7E8F9012AB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F3E6D8C9-4A2B-5C1D-9E8F-1A3B5C7D9E2F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F3E6D8C9-4A2B-5C1D-9E8F-1A3B5C7D9E2F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F3E6D8C9-4A2B-5C1D-9E8F-1A3B5C7D9E2F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F3E6D8C9-4A2B-5C1D-9E8F-1A3B5C7D9E2F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -50,6 +70,9 @@ Global
 		{B79335AD-DC75-4C70-BA4C-D8AF62E1E772} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{EFB89E10-F254-4D3E-86A9-388651AFB895} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{A1B2C3D4-E5F6-7890-ABCD-123456789012} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{989ADC10-BE7F-455E-8857-9C4BFB58AB33} = {4B25B4F7-5692-45A3-8DE4-5962DF90D958}
+		{C5A8B7E9-1F2D-4E3B-8C9A-6D7E8F9012AB} = {4B25B4F7-5692-45A3-8DE4-5962DF90D958}
+		{F3E6D8C9-4A2B-5C1D-9E8F-1A3B5C7D9E2F} = {4B25B4F7-5692-45A3-8DE4-5962DF90D958}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {5D229300-7FCE-477E-8670-6C9FF1F7DFF4}

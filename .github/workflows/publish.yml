@@ -16,6 +16,7 @@ jobs:
         - SemanticKernel.Rankers.Abstractions
         - SemanticKernel.Rankers.BM25
         - SemanticKernel.Rankers.LMRanker
+        - SemanticKernel.Rankers.Pipelines
 
     steps:
     - uses: actions/checkout@v5

@@ -1,5 +1,7 @@
-﻿using Microsoft.Extensions.VectorData;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.VectorData;
 using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Connectors.OpenAI;
 using SemanticKernel.Rankers.Abstractions;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -70,7 +72,10 @@ public class LMRanker : IRanker
         - 0.8-1.0: Extremely relevant and directly answers the query
         """;
 
-        _relevanceFunction = _kernel.CreateFunctionFromPrompt(prompt);
+        _relevanceFunction = _kernel.CreateFunctionFromPrompt(prompt, new OpenAIPromptExecutionSettings
+        {
+            ResponseFormat = AIJsonUtilities.CreateJsonSchema(typeof(RelevanceResponse))
+        });
     }
 
     /// <summary>
@@ -221,16 +226,43 @@ public class LMRanker : IRanker
             var result = await _relevanceFunction.InvokeAsync(_kernel, arguments);
             var responseText = result.ToString();
 
+            // Debug logging for troubleshooting
+            if (string.IsNullOrWhiteSpace(responseText))
+            {
+                Console.WriteLine("Warning: Empty response from language model");
+                return 0.0;
+            }
+
             // Parse the structured JSON response
             var relevanceResponse = JsonSerializer.Deserialize<RelevanceResponse>(responseText, _jsonOptions);
             
+            if (relevanceResponse == null)
+            {
+                Console.WriteLine($"Warning: Failed to deserialize response: {responseText}");
+                return 0.0;
+            }
+            
             // Ensure score is within valid range
-            var score = Math.Max(0.0, Math.Min(1.0, relevanceResponse?.RelevanceScore ?? 0.0));
+            var score = Math.Max(0.0, Math.Min(1.0, relevanceResponse.RelevanceScore));
+            
+            // Debug logging
+            if (score == 0.0 && !string.IsNullOrWhiteSpace(document))
+            {
+                Console.WriteLine($"Warning: Score is 0.0 for non-empty document. Response: {responseText}");
+            }
+            
             return score;
         }
-        catch (Exception)
+        catch (JsonException jsonEx)
         {
+            Console.WriteLine($"JSON parsing error: {jsonEx.Message}");
             // Return a neutral score if there's an error parsing the response
+            return 0.0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error scoring document: {ex.Message}");
+            // Return a neutral score if there's an error
             return 0.0;
         }
     }

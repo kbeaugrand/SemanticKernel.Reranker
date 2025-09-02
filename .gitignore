@@ -362,3 +362,4 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 /samples/LMRankerSample/Properties/launchSettings.json
+/tests/SemanticKernel.Rankers.LMRanker.Tests/appsettings.Development.json

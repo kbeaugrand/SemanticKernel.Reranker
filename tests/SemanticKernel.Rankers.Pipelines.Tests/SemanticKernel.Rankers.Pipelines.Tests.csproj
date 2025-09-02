@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.6.0" />
+    <PackageReference Include="xunit" Version="2.4.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.4.3">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector" Version="6.0.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Catalyst.Models.English" Version="1.0.30952" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SemanticKernel.Rankers.Pipelines\SemanticKernel.Rankers.Pipelines.csproj" />
+    <ProjectReference Include="..\..\src\SemanticKernel.Rankers.Abstractions\SemanticKernel.Rankers.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\SemanticKernel.Rankers.BM25\SemanticKernel.Rankers.BM25.csproj" />
+    <ProjectReference Include="..\..\src\SemanticKernel.Rankers.LMRanker\SemanticKernel.Rankers.LMRanker.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -152,6 +152,7 @@ namespace SemanticKernel.Rankers.BM25
             {
                 yield return item;
             }
+            await Task.CompletedTask; // Satisfy async requirement
         }
 
         /// <summary>

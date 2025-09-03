@@ -139,7 +139,7 @@ namespace SemanticKernel.Rankers.Pipelines.Tests
         }
 
         [Fact]
-        public async Task CascadeRerankPipeline_EmptyRankers_ThrowsArgumentException()
+        public void CascadeRerankPipeline_EmptyRankers_ThrowsArgumentException()
         {
             // Arrange & Act & Assert
             var config = new CascadeRerankPipelineConfig();

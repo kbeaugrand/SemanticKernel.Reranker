@@ -94,7 +94,7 @@ public class BM25RerankerBasicTests
         // Results should be sorted by relevance (descending order)
         for (int i = 1; i < results.Count; i++)
         {
-            results[i - 1].Item2.Should().BeGreaterOrEqualTo(results[i].Item2);
+            results[i - 1].Item2.Should().BeGreaterThanOrEqualTo(results[i].Item2);
         }
     }
 
